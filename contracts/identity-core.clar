@@ -147,3 +147,35 @@
     (ok (map-delete identity-delegates {identity-id: id, delegate: delegate}))
   )
 )
+
+(define-public (disable-identity (id uint))
+  (let
+    (
+      (identity (unwrap! (map-get? identity-details id) err-not-found))
+    )
+    (asserts! (or (is-eq tx-sender contract-owner) (is-owner id)) err-unauthorized)
+    (ok (map-set identity-details id
+      (merge identity {is-active: false})
+    ))
+  )
+)
+
+(define-public (add-nft (id uint) (nft-contract <sip009-nft-trait>) (token-id uint))
+  (let
+    (
+      (identity (unwrap! (map-get? identity-details id) err-not-found))
+      (owner (unwrap! (contract-call? nft-contract get-owner token-id) err-unauthorized))
+    )
+    (asserts! (is-authorized id) err-unauthorized)
+    (asserts! (is-eq (get owner identity) owner) err-unauthorized)
+    (let
+      (
+        (current-nfts (default-to (list) (map-get? nft-ownership {identity-id: id, nft-contract: (contract-of nft-contract)})))
+      )
+      (ok (map-set nft-ownership
+        {identity-id: id, nft-contract: (contract-of nft-contract)}
+        (unwrap! (as-max-len? (append current-nfts token-id) u10) err-unauthorized)
+      ))
+    )
+  )
+)
