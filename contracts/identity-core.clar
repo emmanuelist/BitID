@@ -29,3 +29,21 @@
 )
 (define-map identity-delegates {identity-id: uint, delegate: principal} {expires-at: uint})
 (define-map nft-ownership {identity-id: uint, nft-contract: principal} (list 10 uint))
+
+;; Private Functions
+(define-private (is-owner (id uint))
+  (let ((identity (unwrap! (map-get? identity-details id) false)))
+    (is-eq tx-sender (get owner identity))
+  )
+)
+
+(define-private (is-delegate (id uint))
+  (match (map-get? identity-delegates {identity-id: id, delegate: tx-sender})
+    delegate-info (< block-height (get expires-at delegate-info))
+    false
+  )
+)
+
+(define-private (is-authorized (id uint))
+  (or (is-owner id) (is-delegate id))
+)
