@@ -90,3 +90,60 @@
     ))
   )
 )
+
+(define-public (set-recovery-address (id uint) (recovery principal))
+  (let
+    (
+      (identity (unwrap! (map-get? identity-details id) err-not-found))
+    )
+    (asserts! (is-owner id) err-unauthorized)
+    (ok (map-set identity-details id
+      (merge identity
+        {recovery-address: (some recovery)}
+      )
+    ))
+  )
+)
+
+(define-public (recover-identity (id uint) (new-owner principal))
+  (let
+    (
+      (identity (unwrap! (map-get? identity-details id) err-not-found))
+    )
+    (asserts! (is-some (get recovery-address identity)) err-unauthorized)
+    (asserts! (is-eq (some tx-sender) (get recovery-address identity)) err-unauthorized)
+    (map-set identities new-owner id)
+    (ok (map-set identity-details id
+      (merge identity
+        {
+          owner: new-owner,
+          recovery-address: none,
+          last-updated: block-height
+        }
+      )
+    ))
+  )
+)
+
+(define-public (add-delegate (id uint) (delegate principal) (expires-in uint))
+  (let
+    (
+      (identity (unwrap! (map-get? identity-details id) err-not-found))
+    )
+    (asserts! (is-owner id) err-unauthorized)
+    (ok (map-set identity-delegates
+      {identity-id: id, delegate: delegate}
+      {expires-at: (+ block-height expires-in)}
+    ))
+  )
+)
+
+(define-public (remove-delegate (id uint) (delegate principal))
+  (let
+    (
+      (identity (unwrap! (map-get? identity-details id) err-not-found))
+    )
+    (asserts! (is-owner id) err-unauthorized)
+    (ok (map-delete identity-delegates {identity-id: id, delegate: delegate}))
+  )
+)
