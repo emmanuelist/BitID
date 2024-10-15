@@ -209,3 +209,11 @@
 (define-read-only (get-nfts (id uint))
   (map-to-list nft-ownership)
 )
+
+;; Contract Owner Functions
+(define-public (set-contract-owner (new-owner principal))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (ok (var-set contract-owner new-owner))
+  )
+)
