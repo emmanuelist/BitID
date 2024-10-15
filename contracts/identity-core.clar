@@ -47,3 +47,46 @@
 (define-private (is-authorized (id uint))
   (or (is-owner id) (is-delegate id))
 )
+
+;; Public Functions
+(define-public (create-identity (username (string-ascii 50)) (pubkey (buff 33)))
+  (let
+    (
+      (new-id (var-get next-identity-id))
+      (caller tx-sender)
+    )
+    (asserts! (is-none (map-get? identities caller)) err-already-exists)
+    (map-set identities caller new-id)
+    (map-set identity-details new-id
+      {
+        owner: caller,
+        username: username,
+        pubkey: pubkey,
+        created-at: block-height,
+        last-updated: block-height,
+        recovery-address: none,
+        is-active: true
+      }
+    )
+    (var-set next-identity-id (+ new-id u1))
+    (ok new-id)
+  )
+)
+
+(define-public (update-identity (id uint) (new-username (string-ascii 50)) (new-pubkey (buff 33)))
+  (let
+    (
+      (identity (unwrap! (map-get? identity-details id) err-not-found))
+    )
+    (asserts! (is-authorized id) err-unauthorized)
+    (ok (map-set identity-details id
+      (merge identity
+        {
+          username: new-username,
+          pubkey: new-pubkey,
+          last-updated: block-height
+        }
+      )
+    ))
+  )
+)
