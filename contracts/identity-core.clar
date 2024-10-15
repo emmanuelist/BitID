@@ -179,3 +179,33 @@
     )
   )
 )
+
+;; Read-only Functions
+(define-read-only (get-identity (id uint))
+  (map-get? identity-details id)
+)
+
+(define-read-only (get-identity-by-owner (owner principal))
+  (match (map-get? identities owner)
+    id (get-identity id)
+    none
+  )
+)
+
+(define-read-only (get-delegates (id uint))
+  (fold check-delegate (map-to-list identity-delegates) (list))
+)
+
+(define-private (check-delegate (entry {key: {identity-id: uint, delegate: principal}, value: {expires-at: uint}}) (result (list 10 principal)))
+  (if (and
+        (is-eq (get identity-id (get key entry)) id)
+        (< block-height (get expires-at (get value entry)))
+      )
+    (unwrap! (as-max-len? (append result (get delegate (get key entry))) u10) result)
+    result
+  )
+)
+
+(define-read-only (get-nfts (id uint))
+  (map-to-list nft-ownership)
+)
