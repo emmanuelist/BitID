@@ -196,26 +196,34 @@
       (identity (unwrap! (map-get? identity-details id) err-not-found))
       (delegate-info (map-get? identity-delegates {identity-id: id, delegate: delegate}))
     )
+    ;; Validate owner and delegate
     (asserts! (is-owner id) err-unauthorized)
     (asserts! (is-some delegate-info) err-not-found)
+    ;; Validate delegate is not the owner or contract owner
+    (asserts! (not (is-eq delegate (get owner identity))) err-invalid-input)
+    (asserts! (not (is-eq delegate (var-get contract-owner))) err-invalid-input)
     
     (ok (map-delete identity-delegates {identity-id: id, delegate: delegate}))
   )
 )
+
 
 (define-public (disable-identity (id uint))
   (let
     (
       (identity (unwrap! (map-get? identity-details id) err-not-found))
     )
-    (asserts! (or (is-eq tx-sender (var-get contract-owner)) (is-owner id)) err-unauthorized)
+    ;; Validate identity exists and is currently active
     (asserts! (get is-active identity) err-invalid-input)
+    ;; Check authorization after confirming identity exists
+    (asserts! (or (is-eq tx-sender (var-get contract-owner)) (is-owner id)) err-unauthorized)
     
     (ok (map-set identity-details id
       (merge identity {is-active: false})
     ))
   )
 )
+
 
 (define-public (add-nft (id uint) (nft-contract <sip009-nft-trait>) (token-id uint))
   (let
@@ -260,7 +268,12 @@
 ;; Contract Owner Functions
 (define-public (set-contract-owner (new-owner principal))
   (begin
+    ;; Validate current caller is contract owner
     (asserts! (is-eq tx-sender (var-get contract-owner)) err-owner-only)
+    ;; Validate new owner is not the current owner or zero address
+    (asserts! (not (is-eq new-owner (var-get contract-owner))) err-invalid-input)
+    (asserts! (not (is-eq new-owner 'SP000000000000000000002Q6VF78)) err-invalid-input)
+    
     (ok (var-set contract-owner new-owner))
   )
 )
