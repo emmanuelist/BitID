@@ -1,5 +1,3 @@
-;; BitID: Identity Core Contract
-
 (use-trait sip009-nft-trait .sip009-nft-trait.sip009-nft-trait)
 
 ;; Constants
@@ -29,6 +27,7 @@
 )
 (define-map identity-delegates {identity-id: uint, delegate: principal} {expires-at: uint})
 (define-map nft-ownership {identity-id: uint, nft-contract: principal} (list 10 uint))
+(define-map identity-delegate-list uint (list 10 principal))
 
 ;; Private Functions
 (define-private (is-owner (id uint))
@@ -125,17 +124,24 @@
   )
 )
 
+;; Modify add-delegate to maintain the list
 (define-public (add-delegate (id uint) (delegate principal) (expires-in uint))
   (let
     (
       (identity (unwrap! (map-get? identity-details id) err-not-found))
+      (current-delegates (default-to (list) (map-get? identity-delegate-list id)))
     )
     (asserts! (is-owner id) err-unauthorized)
-    (ok (map-set identity-delegates
+    ;; Add to delegates map with expiration
+    (map-set identity-delegates
       {identity-id: id, delegate: delegate}
       {expires-at: (+ block-height expires-in)}
+    )
+    ;; Add to delegate list if not already present
+    (ok (map-set identity-delegate-list
+      id
+      (unwrap! (as-max-len? (append current-delegates delegate) u10) err-unauthorized))
     ))
-  )
 )
 
 (define-public (remove-delegate (id uint) (delegate principal))
@@ -192,22 +198,13 @@
   )
 )
 
+;; Updated get-delegates to return the list
 (define-read-only (get-delegates (id uint))
-  (fold check-delegate (map-to-list identity-delegates) (list))
+  (default-to (list) (map-get? identity-delegate-list id))
 )
 
-(define-private (check-delegate (entry {key: {identity-id: uint, delegate: principal}, value: {expires-at: uint}}) (result (list 10 principal)))
-  (if (and
-        (is-eq (get identity-id (get key entry)) id)
-        (< block-height (get expires-at (get value entry)))
-      )
-    (unwrap! (as-max-len? (append result (get delegate (get key entry))) u10) result)
-    result
-  )
-)
-
-(define-read-only (get-nfts (id uint))
-  (map-to-list nft-ownership)
+(define-read-only (get-nfts (id uint) (nft-contract principal))
+  (default-to (list) (map-get? nft-ownership {identity-id: id, nft-contract: nft-contract}))
 )
 
 ;; Contract Owner Functions
