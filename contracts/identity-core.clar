@@ -31,6 +31,30 @@
 (define-map identity-delegate-list uint (list 10 principal))
 
 ;; Private Functions
+(define-private (is-valid-username (username (string-ascii 50)))
+  (let
+    (
+      (length (len username))
+    )
+    (and
+      (>= length u3)            ;; minimum 3 characters
+      (<= length u50)           ;; maximum 50 characters
+      (is-valid-char (unwrap-panic (element-at username u0))) ;; first character must be valid
+    )
+  )
+)
+
+(define-private (is-valid-char (char (string-ascii 1)))
+  (or 
+    ;; Check if character is alphanumeric (0-9, a-z, A-Z)
+    (match (index-of "0123456789" char) num true false)
+    (match (index-of "abcdefghijklmnopqrstuvwxyz" char) num true false)
+    (match (index-of "ABCDEFGHIJKLMNOPQRSTUVWXYZ" char) num true false)
+    ;; Check if character is allowed special character
+    (match (index-of "-_" char) num true false)
+  )
+)
+
 (define-private (is-owner (id uint))
   (let ((identity (unwrap! (map-get? identity-details id) false)))
     (is-eq tx-sender (get owner identity))
@@ -48,15 +72,6 @@
   (or (is-owner id) (is-delegate id))
 )
 
-;; Additional validation functions
-(define-private (is-valid-username (username (string-ascii 50)))
-  (and
-    (>= (len username) u3)  ;; minimum length
-    (<= (len username) u50) ;; maximum length
-    (is-ascii username)     ;; ensure valid ASCII
-  )
-)
-
 (define-private (is-valid-pubkey (pubkey (buff 33)))
   (is-eq (len pubkey) u33)  ;; Must be exactly 33 bytes for compressed public key
 )
@@ -69,8 +84,6 @@
 )
 
 ;; Public Functions
-;; Updated public functions with validation
-
 (define-public (create-identity (username (string-ascii 50)) (pubkey (buff 33)))
   (let
     (
@@ -139,7 +152,7 @@
     )
     (asserts! (is-some (get recovery-address identity)) err-unauthorized)
     (asserts! (is-eq (some tx-sender) (get recovery-address identity)) err-unauthorized)
-    (asserts! (not (is-eq new-owner (get owner identity))) err-invalid-input) ;; Prevent redundant recovery
+    (asserts! (not (is-eq new-owner (get owner identity))) err-invalid-input)
     
     (map-set identities new-owner id)
     (ok (map-set identity-details id
@@ -154,7 +167,6 @@
   )
 )
 
-;; Modify add-delegate to maintain the list
 (define-public (add-delegate (id uint) (delegate principal) (expires-in uint))
   (let
     (
@@ -162,25 +174,21 @@
       (current-delegates (default-to (list) (map-get? identity-delegate-list id)))
     )
     (asserts! (is-valid-expiration expires-in) err-invalid-input)
-    (asserts! (not (is-eq delegate (get owner identity))) err-invalid-input) ;; Owner can't be delegate
+    (asserts! (not (is-eq delegate (get owner identity))) err-invalid-input)
     (asserts! (is-owner id) err-unauthorized)
     
-    ;; Check if delegate is already in the list
     (asserts! (not (is-some (index-of current-delegates delegate))) err-already-exists)
     
-    ;; Add to delegates map with expiration
     (map-set identity-delegates
       {identity-id: id, delegate: delegate}
       {expires-at: (+ block-height expires-in)}
     )
     
-    ;; Add to delegate list
     (ok (map-set identity-delegate-list
       id
       (unwrap! (as-max-len? (append current-delegates delegate) u10) err-unauthorized))
     ))
 )
-
 
 (define-public (remove-delegate (id uint) (delegate principal))
   (let
@@ -189,7 +197,7 @@
       (delegate-info (map-get? identity-delegates {identity-id: id, delegate: delegate}))
     )
     (asserts! (is-owner id) err-unauthorized)
-    (asserts! (is-some delegate-info) err-not-found) ;; Ensure delegate exists
+    (asserts! (is-some delegate-info) err-not-found)
     
     (ok (map-delete identity-delegates {identity-id: id, delegate: delegate}))
   )
@@ -201,19 +209,11 @@
       (identity (unwrap! (map-get? identity-details id) err-not-found))
     )
     (asserts! (or (is-eq tx-sender (var-get contract-owner)) (is-owner id)) err-unauthorized)
-    (asserts! (get is-active identity) err-invalid-input) ;; Prevent disabling already disabled identity
+    (asserts! (get is-active identity) err-invalid-input)
     
     (ok (map-set identity-details id
       (merge identity {is-active: false})
     ))
-  )
-)
-
-(define-public (set-contract-owner (new-owner principal))
-  (begin
-    (asserts! (is-eq tx-sender (var-get contract-owner)) err-owner-only)
-    (asserts! (not (is-eq new-owner (var-get contract-owner))) err-invalid-input) ;; Prevent redundant updates
-    (ok (var-set contract-owner new-owner))
   )
 )
 
@@ -249,7 +249,6 @@
   )
 )
 
-;; Updated get-delegates to return the list
 (define-read-only (get-delegates (id uint))
   (default-to (list) (map-get? identity-delegate-list id))
 )
