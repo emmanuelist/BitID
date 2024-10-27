@@ -7,6 +7,7 @@
 (define-constant err-unauthorized (err u102))
 (define-constant err-already-exists (err u103))
 (define-constant err-expired (err u104))
+(define-constant err-invalid-input (err u105))
 
 ;; Data Variables
 (define-data-var next-identity-id uint u0)
@@ -47,14 +48,39 @@
   (or (is-owner id) (is-delegate id))
 )
 
+;; Additional validation functions
+(define-private (is-valid-username (username (string-ascii 50)))
+  (and
+    (>= (len username) u3)  ;; minimum length
+    (<= (len username) u50) ;; maximum length
+    (is-ascii username)     ;; ensure valid ASCII
+  )
+)
+
+(define-private (is-valid-pubkey (pubkey (buff 33)))
+  (is-eq (len pubkey) u33)  ;; Must be exactly 33 bytes for compressed public key
+)
+
+(define-private (is-valid-expiration (expires-in uint))
+  (and 
+    (> expires-in u0)
+    (<= expires-in u52560000) ;; Max ~1 year in blocks (assuming 10 min blocks)
+  )
+)
+
 ;; Public Functions
+;; Updated public functions with validation
+
 (define-public (create-identity (username (string-ascii 50)) (pubkey (buff 33)))
   (let
     (
       (new-id (var-get next-identity-id))
       (caller tx-sender)
     )
+    (asserts! (is-valid-username username) err-invalid-input)
+    (asserts! (is-valid-pubkey pubkey) err-invalid-input)
     (asserts! (is-none (map-get? identities caller)) err-already-exists)
+    
     (map-set identities caller new-id)
     (map-set identity-details new-id
       {
@@ -77,6 +103,8 @@
     (
       (identity (unwrap! (map-get? identity-details id) err-not-found))
     )
+    (asserts! (is-valid-username new-username) err-invalid-input)
+    (asserts! (is-valid-pubkey new-pubkey) err-invalid-input)
     (asserts! (is-authorized id) err-unauthorized)
     (ok (map-set identity-details id
       (merge identity
@@ -111,6 +139,8 @@
     )
     (asserts! (is-some (get recovery-address identity)) err-unauthorized)
     (asserts! (is-eq (some tx-sender) (get recovery-address identity)) err-unauthorized)
+    (asserts! (not (is-eq new-owner (get owner identity))) err-invalid-input) ;; Prevent redundant recovery
+    
     (map-set identities new-owner id)
     (ok (map-set identity-details id
       (merge identity
@@ -131,25 +161,36 @@
       (identity (unwrap! (map-get? identity-details id) err-not-found))
       (current-delegates (default-to (list) (map-get? identity-delegate-list id)))
     )
+    (asserts! (is-valid-expiration expires-in) err-invalid-input)
+    (asserts! (not (is-eq delegate (get owner identity))) err-invalid-input) ;; Owner can't be delegate
     (asserts! (is-owner id) err-unauthorized)
+    
+    ;; Check if delegate is already in the list
+    (asserts! (not (is-some (index-of current-delegates delegate))) err-already-exists)
+    
     ;; Add to delegates map with expiration
     (map-set identity-delegates
       {identity-id: id, delegate: delegate}
       {expires-at: (+ block-height expires-in)}
     )
-    ;; Add to delegate list if not already present
+    
+    ;; Add to delegate list
     (ok (map-set identity-delegate-list
       id
       (unwrap! (as-max-len? (append current-delegates delegate) u10) err-unauthorized))
     ))
 )
 
+
 (define-public (remove-delegate (id uint) (delegate principal))
   (let
     (
       (identity (unwrap! (map-get? identity-details id) err-not-found))
+      (delegate-info (map-get? identity-delegates {identity-id: id, delegate: delegate}))
     )
     (asserts! (is-owner id) err-unauthorized)
+    (asserts! (is-some delegate-info) err-not-found) ;; Ensure delegate exists
+    
     (ok (map-delete identity-delegates {identity-id: id, delegate: delegate}))
   )
 )
@@ -160,9 +201,19 @@
       (identity (unwrap! (map-get? identity-details id) err-not-found))
     )
     (asserts! (or (is-eq tx-sender (var-get contract-owner)) (is-owner id)) err-unauthorized)
+    (asserts! (get is-active identity) err-invalid-input) ;; Prevent disabling already disabled identity
+    
     (ok (map-set identity-details id
       (merge identity {is-active: false})
     ))
+  )
+)
+
+(define-public (set-contract-owner (new-owner principal))
+  (begin
+    (asserts! (is-eq tx-sender (var-get contract-owner)) err-owner-only)
+    (asserts! (not (is-eq new-owner (var-get contract-owner))) err-invalid-input) ;; Prevent redundant updates
+    (ok (var-set contract-owner new-owner))
   )
 )
 
