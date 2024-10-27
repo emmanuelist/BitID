@@ -1,7 +1,7 @@
-(use-trait sip009-nft-trait .sip009-nft-trait.sip009-nft-trait)
+(use-trait sip009-nft-trait 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sip009-nft-trait.sip009-nft-trait)
 
 ;; Constants
-(define-constant contract-owner tx-sender)
+(define-data-var contract-owner principal tx-sender)
 (define-constant err-owner-only (err u100))
 (define-constant err-not-found (err u101))
 (define-constant err-unauthorized (err u102))
@@ -159,7 +159,7 @@
     (
       (identity (unwrap! (map-get? identity-details id) err-not-found))
     )
-    (asserts! (or (is-eq tx-sender contract-owner) (is-owner id)) err-unauthorized)
+    (asserts! (or (is-eq tx-sender (var-get contract-owner)) (is-owner id)) err-unauthorized)
     (ok (map-set identity-details id
       (merge identity {is-active: false})
     ))
@@ -210,7 +210,7 @@
 ;; Contract Owner Functions
 (define-public (set-contract-owner (new-owner principal))
   (begin
-    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (is-eq tx-sender (var-get contract-owner)) err-owner-only)
     (ok (var-set contract-owner new-owner))
   )
 )
